@@ -3,25 +3,23 @@ using Microsoft.EntityFrameworkCore;
 using Mottu.Domain.Dtos;
 using Mottu.Domain.Interfaces;
 using Mottu.Infrastructure.DbContext.Models;
+using System.Data;
 
-namespace Mottu.Application.Services
+namespace Mottu.Application.Services;
+
+public class DelivererService(AppDbContext context,
+                        IMapper mapper,
+                        IFileService fileService) : IDelivererService
 {
-    public class DelivererService : IDelivererService
+    private readonly AppDbContext _context = context;
+    private readonly IMapper _mapper = mapper;
+    private readonly IFileService _fileService = fileService;
+
+    public async Task CreateDelivererAsync(DelivererDto delivererDto)
     {
-        private readonly AppDbContext _context;
-        private readonly IMapper _mapper;
-        private readonly IFileService _fileService;
-
-        public DelivererService(AppDbContext context,
-                                IMapper mapper,
-                                IFileService fileService)
-        {
-            _context = context;
-            _mapper = mapper;
-            _fileService = fileService;
-        }
-
-        public async Task CreateDelivererAsync(DelivererDto delivererDto)
+        using var transaction = await _context.Database
+            .BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        try
         {
             var existingDeliverer = await _context.Deliverers
                 .Where(d => d.Identificador.Equals(delivererDto.Identificador) ||
@@ -47,14 +45,33 @@ namespace Mottu.Application.Services
 
             if (!string.IsNullOrEmpty(delivererDto.ImagemCnh))
                 await _fileService.SaveCnhImageAsync(delivererDto.ImagemCnh, delivererDto.NumeroCnh);
-        }
 
-        public async Task ChangeCnhImage(string id, string cnhImage)
+            await transaction.CommitAsync();
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+    }
+
+    public async Task ChangeCnhImage(string id, string cnhImage)
+    {
+        using var transaction = await _context.Database
+            .BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        try
         {
             var deliverer = await _context.Deliverers
-                .FirstOrDefaultAsync(m => m.Identificador == id) ?? throw new KeyNotFoundException("Entregador não encontrado.");
+                .FirstOrDefaultAsync(m => m.Identificador == id)
+                ?? throw new KeyNotFoundException("Entregador não encontrado.");
 
             await _fileService.SaveCnhImageAsync(cnhImage, deliverer.NumeroCnh);
+            await transaction.CommitAsync();
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync();
+            throw;
         }
     }
 }
