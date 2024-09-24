@@ -1,0 +1,43 @@
+services:
+  mottu.database:
+    image: postgres:latest
+    container_name: mottu.database
+    environment:
+      - POSTGRES_DB=mottu
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - ./.containers/mottu-db:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - 5672:5672
+      - 15672:15672
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 30s
+      retries: 3
+
+  mottu.app:
+    image: ${DOCKER_REGISTRY-}mottuapp
+    container_name: mottu.app
+    build:
+      context: ./src/Mottu.App
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+      - "5002:5001"
+    depends_on:
+      mottu.database:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
